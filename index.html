@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guia Interativo de Ouro Preto da Família Solon</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS for map rendering -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <!-- Leaflet JS for map functionality -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Icon library for stars, etc. -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+
+    <style>
+        /* Custom styles */
+        body { font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        #map { height: 100%; width: 100%; border-radius: 0.75rem; z-index: 10; }
+        .main-container { height: 85vh; }
+        .sidebar { height: 100%; overflow-y: auto; }
+        .location-card.selected { background-color: #e0e7ff; border-left-color: #4f46e5; }
+        .leaflet-popup-content-wrapper { border-radius: 0.5rem; }
+        .leaflet-popup-content { margin: 12px 18px; font-size: 14px; line-height: 1.6; }
+        .leaflet-popup-content b { font-weight: 700; color: #1f2937; }
+        .leaflet-popup-content a { color: #2563eb; text-decoration: none; font-weight: 500; }
+        .leaflet-popup-content a:hover { text-decoration: underline; }
+        .filter-btn.active { background-color: #1d4ed8; color: white; }
+        .hotel-tooltip { background-color: rgba(220, 38, 38, 0.9); border: none; color: white; font-weight: bold; padding: 4px 8px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+        .leaflet-tooltip-top:before { border-top-color: rgba(220, 38, 38, 0.9); }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-6 flex flex-col items-center">
+            <img src="logofamiliasolon.png" alt="Logo Família Solon" class="h-12 mb-4" onerror="this.style.display='none'">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Guia Interativo de Ouro Preto da Família Solon</h1>
+            <p class="mt-2 text-md md:text-lg text-gray-600">Explore os pontos de interesse no mapa.</p>
+        </header>
+
+        <!-- Control Buttons Section -->
+        <div id="controls-container" class="mb-4 flex flex-wrap justify-center items-center gap-4">
+            <div id="filter-container" class="flex flex-wrap justify-center gap-2">
+                <!-- Filter buttons will be dynamically inserted here -->
+            </div>
+        </div>
+        
+        <div class="main-container flex flex-col md:flex-row gap-6">
+            <aside id="sidebar" class="sidebar md:w-1/3 lg:w-1/4 bg-white p-4 rounded-lg shadow-md">
+                <!-- Location cards will be dynamically inserted here -->
+            </aside>
+            <main id="map-container" class="h-96 md:h-full flex-1 shadow-md rounded-lg">
+                <div id="map"></div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA: Location points with final coordinates from user ---
+        const locations = [
+            { name: "Hotel Pousada Arcádia Mineira", address: "R. Xavier da Veiga, 125", category: "Hospedagem", coords: [-20.38889, -43.50255], url: "https://www.google.com/maps/search/?api=1&query=R.+Xavier+da+Veiga,+125,+Ouro+Preto", rating: "4.7", price: "Não informado", hours: "Recepção 24h" },
+            { name: "Satélite Lanches", address: "Rua Conde De Bobadela, 97", category: "Pizza e Lanches", coords: [-20.3854, -43.50475], url: "https://www.google.com/maps/search/?api=1&query=Satélite+Lanches,Ouro+Preto", rating: "4.3", price: "R$ 20-40", hours: "11:00-00:00" },
+            { name: "Lanchonete Maria Bonita", address: "Praça Tiradentes, 60", category: "Pizza e Lanches", coords: [-20.38509, -43.50371], url: "https://www.google.com/maps/search/?api=1&query=Lanchonete+Maria+Bonita,Ouro+Preto", rating: "3.9", price: "R$ 1-20", hours: "06:00-22:00" },
+            { name: "Subway", address: "Rua Conde de Bobadela, 65", category: "Pizza e Lanches", coords: [-20.38548, -43.50431], url: "https://www.google.com/maps/search/?api=1&query=Subway,Ouro+Preto", rating: "4.4", price: "R$ 20-40", hours: "11:00-21:00" },
+            { name: "Restaurante Ouro Preto", address: "Rua Conde de Bobadela, 76", category: "Para Almoçar", coords: [-20.38534, -43.5045], url: "https://www.google.com/maps/search/?api=1&query=Restaurante+Ouro+Preto", rating: "4.3", price: "R$ 40-80", hours: "Ter-Dom: 11:00-15:00" },
+            { name: "Restaurante Jacubas", address: "R. Bernardo Vasconcellos, 98", category: "Para Almoçar", coords: [-20.38586, -43.50143], url: "https://www.google.com/maps/search/?api=1&query=Restaurante+Jacubas,Ouro+Preto", rating: "4.5", price: "R$ 40-60", hours: "Qua-Sáb: 11:00-15:00" },
+            { name: "Império Restaurante", address: "Rua Barão de Camargos, 20", category: "Para Almoçar", coords: [-20.38477, -43.50323], url: "https://www.google.com/maps/search/?api=1&query=Império+Restaurante,Ouro+Preto", rating: "4.0", price: "R$ 40-60", hours: "11:00-15:00" },
+            { name: "Restaurante Vovó Chica", address: "Rua Conde de Bobadela, 159", category: "Para Almoçar", coords: [-20.38533, -43.50535], url: "https://www.google.com/maps/search/?api=1&query=Restaurante+Vovó+Chica,Ouro+Preto", rating: "4.3", price: "R$ 40-60", hours: "Não informado" },
+            { name: "Restaurante Casa do Ouvidor", address: "Rua Conde de Bobadela, 42", category: "À La Carte", coords: [-20.38537, -43.5043], url: "https://www.google.com/maps/search/?api=1&query=Restaurante+Casa+do+Ouvidor,Ouro+Preto", rating: "4.5", price: "Não informado", hours: "Qua-Dom: Horário variado" },
+            { name: "Sebastião", address: "Praça Tiradentes", category: "À La Carte", coords: [-20.38581, -43.50381], url: "https://www.google.com/maps/search/?api=1&query=Restaurante+Sebastião,Ouro+Preto", rating: "4.6", price: "Não informado", hours: "11:00-23:00" },
+            { name: "Parada do Conde", address: "R Conde de Bobadela, 135", category: "À La Carte", coords: [-20.38533, -43.50523], url: "https://www.google.com/maps/search/?api=1&query=Parada+do+Conde,Ouro+Preto", rating: "4.6", price: "Não informado", hours: "Seg-Sáb: Horário variado" },
+            { name: "Le Chalet - Fondue e Bistrô", address: "R Conde de Bobadela, 124", category: "À La Carte", coords: [-20.38523, -43.50519], url: "https://www.google.com/maps/search/?api=1&query=Le+Chalet+Fondue,Ouro+Preto", rating: "4.4", price: "Não informado", hours: "12:00-23:00" },
+            { name: "Bené da Flauta Restaurante", address: "R. São Francisco de Assis, 32", category: "À La Carte", coords: [-20.38658, -43.50247], url: "https://www.google.com/maps/search/?api=1&query=Bené+da+Flauta,Ouro+Preto", rating: "4.5", price: "Não informado", hours: "12:00-22:00" },
+            { name: "Taberna Music Bar", address: "Praça Tiradentes, 64", category: "À La Carte", coords: [-20.38523, -43.50372], url: "https://www.google.com/maps/search/?api=1&query=Taberna+Music+Bar,Ouro+Preto", rating: "4.2", price: "Não informado", hours: "Ter-Sáb: 17:00-00:00" },
+            { name: "Escadabaixo Bar", address: "Rua Direita, 122", category: "À La Carte", coords: [-20.38526, -43.50494], url: "https://www.google.com/maps/search/?api=1&query=Escadabaixo+Bar+Cozinha,Ouro+Preto", rating: "4.6", price: "Não informado", hours: "Horário variado" },
+            { name: "JB Jair Boêmio", address: "Praça Tiradentes, 95", category: "Para Petiscar", coords: [-20.38585, -43.50343], url: "https://www.google.com/maps/search/?api=1&query=JB+Jair+Boêmio,Ouro+Preto", rating: "4.7", price: "Não informado", hours: "Ter-Dom: Horário variado" },
+            { name: "Rena Café", address: "R Conde de Bobadela, 162", category: "Cafés", coords: [-20.38522, -43.50539], url: "https://www.google.com/maps/search/?api=1&query=Rena+Café,Ouro+Preto", rating: "4.8", price: "Não informado", hours: "Seg-Sáb: Horário variado" },
+            { name: "Café das Flores", address: "R. Sen. Rocha Lagoa, 183", category: "Cafés", coords: [-20.38462, -43.50546], url: "https://www.google.com/maps/search/?api=1&query=Café+das+Flores,Ouro+Preto", rating: "4.5", price: "Não informado", hours: "Ter-Dom: 12:00-19:00" },
+            { name: "Solar da Ópera Café", address: "R Conde de Bobadela, 79", category: "Cafés", coords: [-20.38542, -43.50461], url: "https://www.google.com/maps/search/?api=1&query=Solar+da+Ópera+Café,Ouro+Preto", rating: "4.6", price: "Não informado", hours: "Seg-Sáb: 11:00-20:00" },
+            { name: "Trégua Pizza Bar", address: "Rua Professor Paulo Magalhães Gomes, 145", category: "Delivery", coords: [-20.4016, -43.50994], url: "https://www.google.com/maps/search/?api=1&query=Trégua+Pizza+Bar,Ouro+Preto", rating: "N/A", price: "Não informado", hours: "Qui-Sáb: 18:00-23:00" },
+            { name: "Drogaria Araújo - Centro", address: "Rua Barão de Camargos, 8", category: "Utilidades", coords: [-20.38483, -43.50331], url: "https://www.google.com/maps/search/?api=1&query=Drogaria+Araújo+Centro,Ouro+Preto", rating: "N/A", price: "N/A", hours: "Horário variado" },
+            { name: "Drogaria Araújo - Bauxita", address: "Av. Pres. Juscelino Kubitschek, 132", category: "Utilidades", coords: [-20.40252, -43.50935], url: "https://www.google.com/maps/search/?api=1&query=Drogaria+Araújo+Bauxita,Ouro+Preto", rating: "N/A", price: "N/A", hours: "Horário variado" },
+            { name: "REDEFARMA OURO PRETO", address: "R. Antônio Martins, 55 - Barra", category: "Utilidades", coords: [-20.38977, -43.50141], url: "https://www.google.com/maps/search/?api=1&query=REDEFARMA+OURO+PRETO,R.+Antônio+Martins,+55", rating: "4.2", price: "N/A", hours: "Horário variado" },
+            { name: "Feira de artesanato em Pedra Sabão", address: "Largo do Coimbra", category: "Comprinhas", coords: [-20.38603, -43.50276], url: "https://www.google.com/maps/search/?api=1&query=Feira+de+Artesanato+de+Pedra+Sabão+Ouro+Preto", rating: "4.6", price: "Variado", hours: "Diariamente" },
+            { name: "Bras Art", address: "Praça Tiradentes, 68", category: "Comprinhas", coords: [-20.38533, -43.50373], url: "https://www.google.com/maps/search/?api=1&query=Bras+Art+Ouro+Preto", rating: "4.5", price: "Variado", hours: "Horário comercial" },
+            { name: "Imperial Gemas Do Brasil", address: "R. Amália Bernhaus,11", category: "Comprinhas", coords: [-20.38604, -43.50328], url: "https://www.google.com/maps/search/?api=1&query=Imperial+Gemas+Do+Brasil+Ouro+Preto", rating: "4.8", price: "Elevado", hours: "Horário comercial" },
+            { name: "Jóias de Ouro Preto", address: "R Conde de Bobadela, 12", category: "Comprinhas", coords: [-20.38544, -43.50388], url: "https://www.google.com/maps/search/?api=1&query=Jóias+de+Ouro+Preto", rating: "N/A", price: "Elevado", hours: "Horário comercial" },
+            { name: "Empório Em Cantos de Minas", address: "R. Sen. Rocha Lagoa, 159", category: "Comprinhas", coords: [-20.38465, -43.50518], url: "https://www.google.com/maps/search/?api=1&query=Empório+Em+Cantos+de+Minas+Ouro+Preto", rating: "4.7", price: "Variado", hours: "Horário comercial" },
+            { name: "Armazém do Bairro", address: "R. Xavier da Veiga", category: "Comprinhas", coords: [-20.38907, -43.50232], url: "https://www.google.com/maps/search/?api=1&query=Armazém+do+Bairro+Ouro+Preto", rating: "N/A", price: "Variado", hours: "Horário comercial" },
+            { name: "Armazém Vila Rica", address: "R Conde de Bobadela, 155", category: "Comprinhas", coords: [-20.38533, -43.5053], url: "https://www.google.com/maps/search/?api=1&query=Armazém+Vila+Rica+Ouro+Preto", rating: "4.5", price: "Variado", hours: "Horário comercial" }
+        ];
+        
+        // --- GLOBAL VARIABLES ---
+        const map = L.map('map').setView([-20.3858, -43.5038], 16);
+        const markersLayer = L.layerGroup().addTo(map);
+        const sidebar = document.getElementById('sidebar');
+        const filterContainer = document.getElementById('filter-container');
+        const categories = ['Todos', ...new Set(locations.map(loc => loc.category))];
+        let activeButton = null;
+        let activeCard = null;
+        let markers = {};
+
+        // --- TILE LAYER ---
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19
+        }).addTo(map);
+
+        // --- CUSTOM ICON ---
+        const redIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        });
+
+        // --- CORE FUNCTIONS ---
+        function populateSidebar(filter = 'Todos') {
+            sidebar.innerHTML = '';
+            const filteredLocations = filter === 'Todos' ? locations : locations.filter(loc => loc.category === filter);
+            filteredLocations.forEach(loc => {
+                const card = document.createElement('div');
+                card.className = 'location-card p-3 mb-2 border-l-4 border-transparent cursor-pointer hover:bg-gray-100 rounded-r-lg transition-colors';
+                card.innerHTML = `
+                    <h3 class="font-bold text-md text-gray-800">${loc.name}</h3>
+                    <p class="text-sm text-gray-500">${loc.category}</p>
+                    <div class="flex justify-between text-xs text-gray-600 mt-2">
+                        <span><i class="fa-solid fa-star text-yellow-500"></i> ${loc.rating}</span>
+                        <span><i class="fa-solid fa-dollar-sign text-green-600"></i> ${loc.price}</span>
+                        <span><i class="fa-solid fa-clock text-blue-500"></i> ${loc.hours}</span>
+                    </div>
+                `;
+                card.addEventListener('click', () => {
+                    if (activeCard) activeCard.classList.remove('selected');
+                    card.classList.add('selected');
+                    activeCard = card;
+                    map.setView(loc.coords, 18);
+                    markers[loc.name].openPopup();
+                });
+                sidebar.appendChild(card);
+            });
+        }
+
+        function displayMarkers(filter = 'Todos') {
+            markersLayer.clearLayers();
+            markers = {};
+            const filteredLocations = filter === 'Todos' ? locations : locations.filter(loc => loc.category === filter);
+            
+            filteredLocations.forEach(loc => {
+                const isHotel = loc.name === "Hotel Pousada Arcádia Mineira";
+                
+                let marker;
+                if (isHotel) {
+                    marker = L.marker(loc.coords, { icon: redIcon, draggable: false }); 
+                    marker.bindTooltip(loc.name, { permanent: true, direction: 'top', className: 'hotel-tooltip' });
+                } else {
+                    marker = L.marker(loc.coords, { draggable: false });
+                }
+
+                const popupContent = `<b>${loc.name}</b><br>${loc.address}<br><br><a href="${loc.url}" target="_blank" rel="noopener noreferrer">Ver no Google Maps &rarr;</a>`;
+                marker.bindPopup(popupContent);
+                
+                marker.addTo(markersLayer);
+                markers[loc.name] = marker;
+            });
+        }
+        
+        function createFilterButtons() {
+            filterContainer.innerHTML = ''; // Clear existing buttons before creating new ones
+            categories.forEach(category => {
+                const button = document.createElement('button');
+                button.innerText = category;
+                button.className = 'filter-btn px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-full hover:bg-gray-100 transition-colors';
+                if (category === 'Todos') {
+                    button.classList.add('active');
+                    activeButton = button;
+                }
+                button.addEventListener('click', () => {
+                    if (activeButton) activeButton.classList.remove('active');
+                    button.classList.add('active');
+                    activeButton = button;
+                    displayMarkers(category);
+                    populateSidebar(category);
+                });
+                filterContainer.appendChild(button);
+            });
+        }
+
+        // --- INITIALIZE THE PAGE ---
+        createFilterButtons();
+        displayMarkers();
+        populateSidebar();
+        
+        setTimeout(() => map.invalidateSize(), 100);
+    </script>
+</body>
+</html>
